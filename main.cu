@@ -41,6 +41,12 @@ int main() {
     // Copy data from device to host
     cudaMemcpy(host_c, device_c, bytes, cudaMemcpyDeviceToHost);
 
+    // Print the result
+    printf("First 10 results: ");
+    for (int i = 0; i < 10; i++) {
+        printf("%d + %d = %d\n", host_a[i], host_b[i], host_c[i]);
+    }
+
     // Free memory
     cudaFree(device_a);
     cudaFree(device_b);
@@ -48,12 +54,6 @@ int main() {
     free(host_a);
     free(host_b);
     free(host_c);
-
-    // Print the result
-    printf("First 10 results: ");
-    for (int i = 0; i < 10; i++) {
-        printf("%d + %d = %d\n", host_a[i], host_b[i], host_c[i]);
-    }
 
     return 0;
 }
