@@ -1,0 +1,26 @@
+# Build artifacts
+main
+a.out
+*.o
+*.obj
+*.exe
+*.out
+*.app
+
+# CUDA
+*.cubin
+*.ptx
+*.fatbin
+
+# CMake
+build/
+cmake-build-*/
+
+# macOS
+.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
