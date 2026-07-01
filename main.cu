@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
+#define TILE_SIZE 16
 
 
 __global__ void vector_add_kernel(int* c, const int* a, const int* b, int size) {
@@ -18,6 +19,29 @@ __global__ void matmul_naive_kernel(float* C, const float* A, const float* B, in
         for (int k = 0; k < K; k++) {
             sum += A[row * K + k] * B[k * N + col];
         }
+        C[row * N + col] = sum;
+    }
+}
+
+
+__global__ void matmul_tiled_kernel(float* C, const float* A, const float* B, int M, int N, int K) {
+    __shared__ float a_tile[TILE_SIZE][TILE_SIZE];
+    __shared__ float b_tile[TILE_SIZE][TILE_SIZE];
+    float sum = 0.0f;
+
+    for (int phase = 0; phase < (K + TILE_SIZE - 1) / TILE_SIZE; phase++) {
+        // 1. LOAD
+        a_tile[ty][tx] = (row < M && phase * TILE_SIZE + tx < K) ? A[row * K + phase * TILE_SIZE + tx] : 0.0f;
+        b_tile[ty][tx] = (col < N && phase * TILE_SIZE + ty < K) ? B[(phase * TILE_SIZE + ty) * N + col] : 0.0f;
+        // 2. SYNC
+        __syncthreads();
+        // 3. COMPUTE
+        for (int i = 0; i < TILE_SIZE; i++) {
+            sum += a_tile[ty][i] * b_tile[i][tx];
+        }
+        __syncthreads();
+    }
+    if (row < M && col < N) {
         C[row * N + col] = sum;
     }
 }
@@ -74,7 +98,7 @@ void vector_add_example() {
 }
 
 
-void matmul_naive_example() {
+void matmul_example(int type = 0) {
     int M = 1024; // Rows of A
     int N = 1024; // Columns of B
     int K = 1024; // Columns of A and rows of B
@@ -105,13 +129,20 @@ void matmul_naive_example() {
 
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((N + 15) / 16, (M + 15) / 16);
-    matmul_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K);
+
+    if (type == 0) {
+        printf("Using tiled kernel\n");
+        matmul_tiled_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K);
+    } else {
+        printf("Using naive kernel\n");
+        matmul_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K);
+    }
 
     // Copy data from device to host
     cudaMemcpy(host_C, device_C, bytes_C, cudaMemcpyDeviceToHost);
 
     // Print the result
-    printf("Naive matrix multiplication result: ");
+    printf("Matrix multiplication result: ");
     printf("First 10 results: ");
     for (int i = 0; i < 10; i++) {
         printf("%f ", host_C[i]);
@@ -127,9 +158,11 @@ void matmul_naive_example() {
     free(host_C);
 }
 
+
 int main() {
     vector_add_example();
-    matmul_naive_example();
+    matmul_example(0); // Tiled kernel
+    matmul_example(1); // Naive kernel
 
     return 0;
 }
