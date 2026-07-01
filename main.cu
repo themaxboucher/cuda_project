@@ -1,14 +1,29 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 
-__global__ void addKernel(int* c, const int* a, const int* b, int size) {
+
+__global__ void vector_add_kernel(int* c, const int* a, const int* b, int size) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < size) {
         c[i] = a[i] + b[i];
     }
 }
 
-int main() {
+
+__global__ void matmul_naive_kernel(float* C, const float* A, const float* B, int M, int N, int K) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row < M && col < N) {
+        float sum = 0.0f;
+        for (int k = 0; k < K; k++) {
+            sum += A[row * K + k] * B[k * N + col];
+        }
+        C[row * N + col] = sum;
+    }
+}
+
+
+void vector_add_example() {
     int size = 1000000;
     int bytes = size * sizeof(int);
 
@@ -36,16 +51,18 @@ int main() {
 
     int threadsPerBlock = 256;
     int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
-    addKernel<<<blocksPerGrid, threadsPerBlock>>>(device_c, device_a, device_b, size);
+    vector_add_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_c, device_a, device_b, size);
 
     // Copy data from device to host
     cudaMemcpy(host_c, device_c, bytes, cudaMemcpyDeviceToHost);
 
     // Print the result
+    printf("Vector addition result: ");
     printf("First 10 results: ");
     for (int i = 0; i < 10; i++) {
         printf("%d + %d = %d\n", host_a[i], host_b[i], host_c[i]);
     }
+    printf("\n");
 
     // Free memory
     cudaFree(device_a);
@@ -54,6 +71,65 @@ int main() {
     free(host_a);
     free(host_b);
     free(host_c);
+}
+
+
+void matmul_naive_example() {
+    int M = 1024; // Rows of A
+    int N = 1024; // Columns of B
+    int K = 1024; // Columns of A and rows of B
+    size_t bytes_A = M * K * sizeof(float);
+    size_t bytes_B = K * N * sizeof(float);
+    size_t bytes_C = M * N * sizeof(float);
+
+    // Allocate memory on the host
+    float* host_A = (float*) malloc(bytes_A);
+    float* host_B = (float*) malloc(bytes_B);
+    float* host_C = (float*) malloc(bytes_C);
+
+    // Set all the values of A and B to float 1.0
+    for (int i = 0; i < M * K; i++) host_A[i] = 1.0f;
+    for (int i = 0; i < K * N; i++) host_B[i] = 1.0f;
+    
+    // Allocate memory on the device
+    float* device_A;
+    float* device_B;
+    float* device_C;
+    cudaMalloc(&device_A, bytes_A);
+    cudaMalloc(&device_B, bytes_B);
+    cudaMalloc(&device_C, bytes_C);
+
+    // Copy data from host to device
+    cudaMemcpy(device_A, host_A, bytes_A, cudaMemcpyHostToDevice);
+    cudaMemcpy(device_B, host_B, bytes_B, cudaMemcpyHostToDevice);
+
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocksPerGrid((N + 15) / 16, (M + 15) / 16);
+    matmul_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K);
+
+    // Copy data from device to host
+    cudaMemcpy(host_C, device_C, bytes_C, cudaMemcpyDeviceToHost);
+
+    // Print the result
+    printf("Naive matrix multiplication result: ");
+    printf("First 10 results: ");
+    for (int i = 0; i < 10; i++) {
+        printf("%f ", host_C[i]);
+    }
+    printf("\n");
+
+    // Free memory
+    cudaFree(device_A);
+    cudaFree(device_B);
+    cudaFree(device_C);
+    free(host_A);
+    free(host_B);
+    free(host_C);
+}
+
+int main() {
+    vector_add_example();
+    matmul_naive_example();
 
     return 0;
 }
