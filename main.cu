@@ -27,6 +27,10 @@ __global__ void matmul_naive_kernel(float* C, const float* A, const float* B, in
 __global__ void matmul_tiled_kernel(float* C, const float* A, const float* B, int M, int N, int K) {
     __shared__ float a_tile[TILE_SIZE][TILE_SIZE];
     __shared__ float b_tile[TILE_SIZE][TILE_SIZE];
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    int row = blockIdx.y * blockDim.y + ty;
+    int col = blockIdx.x * blockDim.x + tx;
     float sum = 0.0f;
 
     for (int phase = 0; phase < (K + TILE_SIZE - 1) / TILE_SIZE; phase++) {
