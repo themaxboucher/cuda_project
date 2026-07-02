@@ -7,6 +7,7 @@ import {
   chunk,
   WARP_SIZE,
 } from '../sim/topology.js';
+import { GLOBAL_LATENCY } from '../sim/memory.js';
 
 const source = [
   '__global__ void matmul_naive(float* C, float* A, float* B,',
@@ -111,24 +112,25 @@ export const matmulNaive = {
             activeThreads: warpKeys,
           });
 
-          const readsA = [];
-          const readsB = [];
-          for (const { row, col } of coords) {
-            for (let k = 0; k < K; k++) {
-              readsA.push(row * K + k);
-              readsB.push(k * N + col);
-            }
+          // One step per k: every loop iteration is a fresh round trip to slow
+          // global memory, so each iteration is its own (expensive) step.
+          for (let k = 0; k < K; k++) {
+            tb.step({
+              line: 6,
+              phase: 'compute',
+              memory: 'global',
+              cost: 2 * GLOBAL_LATENCY,
+              caption:
+                `k = ${k}: sum += A[row][${k}] · B[${k}][col]. Two GLOBAL memory reads per thread ` +
+                `(~${GLOBAL_LATENCY} cycles each) — and the loop pays this price for every k.`,
+              activeBlocks: [blockKey(b)],
+              activeThreads: warpKeys,
+              reads: {
+                A: coords.map(({ row }) => row * K + k),
+                B: coords.map(({ col }) => k * N + col),
+              },
+            });
           }
-          tb.step({
-            line: 6,
-            phase: 'compute',
-            caption:
-              'Each thread walks k = 0..K-1, multiplying A[row][k] · B[k][col] and accumulating into sum. ' +
-              'Note: every value comes from slow global memory.',
-            activeBlocks: [blockKey(b)],
-            activeThreads: warpKeys,
-            reads: { A: readsA, B: readsB },
-          });
 
           const nextC = [...tb.data.C];
           const writes = [];
@@ -144,7 +146,9 @@ export const matmulNaive = {
           tb.step({
             line: 8,
             phase: 'write',
-            caption: 'C[row][col] = sum — the warp writes its output cells.',
+            memory: 'global',
+            cost: GLOBAL_LATENCY,
+            caption: 'C[row][col] = sum — the warp writes its output cells to global memory.',
             activeBlocks: [blockKey(b)],
             activeThreads: warpKeys,
             writes: { C: writes },
@@ -154,7 +158,12 @@ export const matmulNaive = {
       }
     });
 
-    tb.step({ line: 9, phase: 'done', caption: 'Kernel complete — C is fully computed.' });
+    tb.step({
+      line: 9,
+      phase: 'done',
+      caption:
+        'Kernel complete — C is fully computed. Check the GPU clock: every single A/B read paid the slow global-memory price.',
+    });
     return tb.build();
   },
 };

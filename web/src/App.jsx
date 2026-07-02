@@ -5,8 +5,35 @@ import CodePanel from './components/CodePanel.jsx';
 import DataPanels from './components/DataPanels.jsx';
 import SharedPanel from './components/SharedPanel.jsx';
 import Scene from './components/Scene.jsx';
+import { GLOBAL_LATENCY, SHARED_LATENCY, BASE_COST } from './sim/memory.js';
 
 const SPEED_DELAY = { 1: 1600, 2: 1100, 3: 750, 4: 450, 5: 250 };
+// A step costing one global round trip (2 × GLOBAL_LATENCY) plays for one full
+// base tick; cheaper steps go proportionally faster, floored so they stay visible.
+const COST_REF = 2 * GLOBAL_LATENCY;
+
+function stepDelay(speed, cost) {
+  const base = SPEED_DELAY[speed];
+  return Math.max(base * 0.2, Math.min(base * 6, (base * (cost ?? BASE_COST)) / COST_REF));
+}
+
+function MemoryBadge({ memory }) {
+  if (memory === 'global') {
+    return (
+      <span className="mem-badge mem-global">
+        🐢 GLOBAL memory · ~{GLOBAL_LATENCY} cycles/access · slow
+      </span>
+    );
+  }
+  if (memory === 'shared') {
+    return (
+      <span className="mem-badge mem-shared">
+        ⚡ SHARED memory · ~{SHARED_LATENCY} cycles/access · fast
+      </span>
+    );
+  }
+  return <span className="mem-badge mem-none">no memory traffic</span>;
+}
 
 export default function App() {
   const [kernelId, setKernelId] = useState(kernels[0].id);
@@ -34,7 +61,12 @@ export default function App() {
       setPlaying(false);
       return undefined;
     }
-    const id = setTimeout(() => setIndex((i) => Math.min(i + 1, trace.steps.length - 1)), SPEED_DELAY[speed]);
+    // Dwell on the CURRENT step for a time proportional to its cycle cost, so
+    // global-memory steps visibly take longer than shared-memory ones.
+    const id = setTimeout(
+      () => setIndex((i) => Math.min(i + 1, trace.steps.length - 1)),
+      stepDelay(speed, trace.steps[index].cost),
+    );
     return () => clearTimeout(id);
   }, [playing, index, speed, trace]);
 
@@ -114,6 +146,12 @@ export default function App() {
 
         <div className="center">
           <Scene trace={trace} step={step} />
+          <div className="memory-bar">
+            <MemoryBadge memory={step.memory} />
+            <span className="gpu-clock">
+              GPU clock: <b>{step.cycles.toLocaleString()}</b> / {trace.totalCycles.toLocaleString()} cycles
+            </span>
+          </div>
           <div className={'status phase-' + step.phase}>
             <span className="phase-tag">{step.phase || '—'}</span>
             {step.caption}

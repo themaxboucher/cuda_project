@@ -7,6 +7,7 @@ import {
   chunk,
   WARP_SIZE,
 } from '../sim/topology.js';
+import { GLOBAL_LATENCY } from '../sim/memory.js';
 
 const source = [
   '__global__ void vector_add(int* c, int* a, int* b, int n) {',
@@ -107,7 +108,9 @@ export const vectorAdd = {
           tb.step({
             line: 3,
             phase: 'compute',
-            caption: `c[i] = a[i] + b[i] — the warp writes ${indices.length} result(s) to global memory.`,
+            memory: 'global',
+            cost: 3 * GLOBAL_LATENCY,
+            caption: `c[i] = a[i] + b[i] — two global reads plus one global write per thread; the warp writes ${indices.length} result(s).`,
             activeBlocks: [blockKey(b)],
             activeThreads: warpKeys,
             reads: { a: indices, b: indices },

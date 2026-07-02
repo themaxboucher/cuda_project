@@ -1,5 +1,6 @@
 import { TraceBuilder } from '../sim/TraceBuilder.js';
 import { enumerateBlocks, enumerateThreads, blockKey, threadKey, chunk } from '../sim/topology.js';
+import { GLOBAL_LATENCY, SHARED_LATENCY, SYNC_COST } from '../sim/memory.js';
 
 const source = [
   '#define TILE 2',
@@ -131,7 +132,11 @@ export const matmulTiled = {
           tb.step({
             line: 10,
             phase: 'load',
-            caption: `Phase ${p + 1}/${phases}: the ${total} threads cooperatively load one TILE×TILE tile of A and B into shared memory.`,
+            memory: 'global',
+            cost: 2 * GLOBAL_LATENCY,
+            caption:
+              `Phase ${p + 1}/${phases}: the ${total} threads cooperatively load one TILE×TILE tile of A and B into shared memory. ` +
+              'This is the only slow global-memory trip of the phase — each value is fetched just once.',
             activeBlocks: [blockKey(b)],
             activeThreads: blockThreadKeys,
             reads: { A: readsA, B: readsB },
@@ -142,6 +147,7 @@ export const matmulTiled = {
           tb.step({
             line: 12,
             phase: 'sync',
+            cost: SYNC_COST,
             caption: '__syncthreads(): every thread stops at the barrier until the tile is fully loaded.',
             activeBlocks: [blockKey(b)],
             activeThreads: blockThreadKeys,
@@ -161,8 +167,11 @@ export const matmulTiled = {
           tb.step({
             line: 14,
             phase: 'compute',
+            memory: 'shared',
+            cost: TILE * 2 * SHARED_LATENCY,
             caption:
-              'Each thread multiplies its row of aTile by its column of bTile — fast shared-memory reads — and adds to sum.',
+              `Each thread multiplies its row of aTile by its column of bTile and adds to sum. ` +
+              `All ${TILE * 2} reads hit fast SHARED memory (~${SHARED_LATENCY} cycles each) — this step flies by.`,
             activeBlocks: [blockKey(b)],
             activeThreads: blockThreadKeys,
           });
@@ -172,6 +181,7 @@ export const matmulTiled = {
           tb.step({
             line: 15,
             phase: 'sync',
+            cost: SYNC_COST,
             caption: '__syncthreads() again, so no thread overwrites the tile while others still read it.',
             activeBlocks: [blockKey(b)],
             activeThreads: blockThreadKeys,
@@ -195,6 +205,8 @@ export const matmulTiled = {
         tb.step({
           line: 17,
           phase: 'write',
+          memory: 'global',
+          cost: GLOBAL_LATENCY,
           caption: 'After all phases, each thread writes its accumulated sum to C in global memory.',
           activeBlocks: [blockKey(b)],
           activeThreads: blockThreadKeys,
@@ -205,7 +217,12 @@ export const matmulTiled = {
       }
     });
 
-    tb.step({ line: 18, phase: 'done', caption: 'Kernel complete — C computed using shared-memory tiles.' });
+    tb.step({
+      line: 18,
+      phase: 'done',
+      caption:
+        'Kernel complete — same result as the naive kernel, but far fewer cycles on the GPU clock: most reads hit fast shared memory.',
+    });
     return tb.build();
   },
 };

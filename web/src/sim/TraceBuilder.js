@@ -6,6 +6,8 @@
 // the array, mutate the clone, and swap it in. That lets each step cheaply hold
 // references to the arrays as they were at that moment.
 
+import { BASE_COST } from './memory.js';
+
 export class TraceBuilder {
   constructor({ id, name, dims, gridDim, blockDim, source, dataPanels, data }) {
     this.meta = { id, name, dims, gridDim, blockDim, source, dataPanels };
@@ -14,6 +16,7 @@ export class TraceBuilder {
     this.steps = [];
     this.doneBlocks = [];
     this.doneThreads = [];
+    this.cycles = 0; // running GPU-cycle total (see sim/memory.js)
   }
 
   markBlockDone(key) {
@@ -27,10 +30,13 @@ export class TraceBuilder {
   }
 
   step(partial) {
+    const cost = partial.cost ?? BASE_COST;
+    this.cycles += cost;
     this.steps.push({
       line: -1,
       phase: '',
       caption: '',
+      memory: null, // 'global' | 'shared' | null — where this step's accesses go
       activeBlocks: [],
       activeThreads: [],
       reads: {},
@@ -41,11 +47,13 @@ export class TraceBuilder {
       doneThreads: [...this.doneThreads],
       data: { ...this.data },
       ...partial,
+      cost,
+      cycles: this.cycles,
     });
   }
 
   build() {
-    return { ...this.meta, steps: this.steps };
+    return { ...this.meta, steps: this.steps, totalCycles: this.cycles };
   }
 }
 
