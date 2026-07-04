@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
+#include <cublas_v2.h>
 #define TILE_SIZE 16
 
 
@@ -48,6 +49,35 @@ __global__ void matmul_tiled_kernel(float* C, const float* A, const float* B, in
     if (row < M && col < N) {
         C[row * N + col] = sum;
     }
+}
+
+
+void matmul_cublas(float* C, const float* A, const float* B, int M, int N, int K) {
+    // Create a CuBLAS handle
+    cublasHandle_t handle;
+    cublasCreate(&handle);
+
+    // With cublas<t>gemm C = alpha * A * B + beta * C
+    // We want to compute C = A * B
+    float alpha = 1.0f;
+    float beta = 0.0f;
+
+    // cuBLAS stores matrices in column-major order
+    // This means we can compute B * A and get the same result as A * B
+    // https://docs.nvidia.com/cuda/cublas/#cublas-t-gemm
+    cublasSgemm(
+        handle,
+        CUBLAS_OP_N, CUBLAS_OP_N, // No transposes
+        N, M, K,
+        &alpha,
+        B, N,
+        A, K,
+        &beta,
+        C, N
+    );
+    
+    // Clean up the handle
+    cublasDestroy(handle);
 }
 
 
@@ -135,11 +165,14 @@ void matmul_example(int type = 0) {
     dim3 blocksPerGrid((N + 15) / 16, (M + 15) / 16);
 
     if (type == 0) {
+        printf("Using naive kernel\n");
+        matmul_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K);
+    } else if (type == 1) {
         printf("Using tiled kernel\n");
         matmul_tiled_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K);
     } else {
-        printf("Using naive kernel\n");
-        matmul_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K);
+        printf("Using CuBLAS\n");
+        matmul_cublas(device_C, device_A, device_B, M, N, K);
     }
 
     // Copy data from device to host
@@ -165,8 +198,9 @@ void matmul_example(int type = 0) {
 
 int main() {
     vector_add_example();
-    matmul_example(0); // Tiled kernel
-    matmul_example(1); // Naive kernel
+    matmul_example(0); // Naive kernel
+    matmul_example(1); // Tiled kernel
+    matmul_example(2); // CuBLAS
 
     return 0;
 }
