@@ -3,6 +3,24 @@
 #include <cublas_v2.h>
 #define TILE_SIZE 16
 
+#define TIME_GPU(label, iterations, code_block) \
+    do { \
+        cudaEvent_t start, stop; \
+        cudaEventCreate(&start); \
+        cudaEventCreate(&stop); \
+        code_block; /* Warmup. The first run will be slower. */ \
+        cudaDeviceSynchronize(); \
+        cudaEventRecord(start); \
+        for (int i = 0; i < iterations; i++) { code_block; } \
+        cudaEventRecord(stop); \
+        cudaEventSynchronize(stop); \
+        float milliseconds = 0; \
+        cudaEventElapsedTime(&milliseconds, start, stop); \
+        printf("%s: %f ms (avg over %d iterations)\n", label, milliseconds / iterations, iterations); \
+        cudaEventDestroy(start); \
+        cudaEventDestroy(stop); \
+    } while (0)
+
 
 __global__ void vector_add_kernel(int* c, const int* a, const int* b, int size) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -165,14 +183,11 @@ void matmul_example(int type = 0) {
     dim3 blocksPerGrid((N + 15) / 16, (M + 15) / 16);
 
     if (type == 0) {
-        printf("Using naive kernel\n");
-        matmul_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K);
+        TIME_GPU("Naive kernel", 100, matmul_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K));
     } else if (type == 1) {
-        printf("Using tiled kernel\n");
-        matmul_tiled_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K);
+        TIME_GPU("Tiled kernel", 100, matmul_tiled_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K));
     } else {
-        printf("Using CuBLAS\n");
-        matmul_cublas(device_C, device_A, device_B, M, N, K);
+        TIME_GPU("CuBLAS", 100, matmul_cublas(device_C, device_A, device_B, M, N, K));
     }
 
     // Copy data from device to host
