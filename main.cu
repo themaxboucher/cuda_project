@@ -3,15 +3,15 @@
 #include <cublas_v2.h>
 #define TILE_SIZE 16
 
-#define TIME_GPU(label, iterations, code_block) \
+#define TIME_GPU(label, iterations, ...) \
     do { \
         cudaEvent_t start, stop; \
         cudaEventCreate(&start); \
         cudaEventCreate(&stop); \
-        code_block; /* Warmup. The first run will be slower. */ \
+        __VA_ARGS__; /* Warmup. The first run will be slower. */ \
         cudaDeviceSynchronize(); \
         cudaEventRecord(start); \
-        for (int i = 0; i < iterations; i++) { code_block; } \
+        for (int i = 0; i < iterations; i++) { __VA_ARGS__; } \
         cudaEventRecord(stop); \
         cudaEventSynchronize(stop); \
         float milliseconds = 0; \
