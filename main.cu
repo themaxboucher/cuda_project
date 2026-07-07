@@ -3,7 +3,7 @@
 #include <cublas_v2.h>
 #define TILE_SIZE 16
 
-#define TIME_GPU(label, iterations, ...) \
+#define TIME_GPU(label, iterations, flop_count, ...) \
     do { \
         cudaEvent_t start, stop; \
         cudaEventCreate(&start); \
@@ -16,9 +16,11 @@
         cudaEventSynchronize(stop); \
         float milliseconds = 0; \
         cudaEventElapsedTime(&milliseconds, start, stop); \
-        printf("%s: %f ms (avg over %d iterations)\n", label, milliseconds / iterations, iterations); \
         cudaEventDestroy(start); \
         cudaEventDestroy(stop); \
+        float ms_per_iter = milliseconds / iterations; \
+        double gflops = flop_count / (ms_per_iter * 1e-3) / 1e9; \
+        printf("%s: %d GFLOPS | %f ms (avg over %d iterations)\n", label, gflops, ms_per_iter, iterations); \
     } while (0)
 
 
@@ -182,12 +184,14 @@ void matmul_example(int type = 0) {
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((N + 15) / 16, (M + 15) / 16);
 
+    double flop_count = 2.0 * M * N * K;
+
     if (type == 0) {
-        TIME_GPU("Naive kernel", 100, matmul_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K));
+        TIME_GPU("Naive kernel", 100, flop_count, matmul_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K));
     } else if (type == 1) {
-        TIME_GPU("Tiled kernel", 100, matmul_tiled_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K));
+        TIME_GPU("Tiled kernel", 100, flop_count, matmul_tiled_kernel<<<blocksPerGrid, threadsPerBlock>>>(device_C, device_A, device_B, M, N, K));
     } else {
-        TIME_GPU("CuBLAS", 100, matmul_cublas(device_C, device_A, device_B, M, N, K));
+        TIME_GPU("CuBLAS", 100, flop_count, matmul_cublas(device_C, device_A, device_B, M, N, K));
     }
 
     // Copy data from device to host
