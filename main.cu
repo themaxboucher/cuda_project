@@ -20,7 +20,7 @@
         cudaEventDestroy(stop); \
         float ms_per_iter = milliseconds / iterations; \
         double gflops = flop_count / (ms_per_iter * 1e-3) / 1e9; \
-        printf("%s: %d GFLOPS | %f ms (avg over %d iterations)\n", label, gflops, ms_per_iter, iterations); \
+        printf("%s: %f GFLOPS | %f ms (avg over %d iterations)\n", label, gflops, ms_per_iter, iterations); \
     } while (0)
 
 
