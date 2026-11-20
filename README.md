@@ -39,8 +39,6 @@ int i = blockIdx.x * blockDim.x + threadIdx.x;
 
 Vector addition is "embarrassingly parallel": each operation is independent of the others, so each thread adds one pair of elements.
 
-$\begin{bmatrix} a \\ b \end{bmatrix} + \begin{bmatrix} c \\ d \end{bmatrix} = \begin{bmatrix} a + c \\ b + d \end{bmatrix}$
-
 ### Naive matrix multiplication
 
 [`matmul_naive.cu`](src/kernels/matmul_naive.cu) uses a 2D grid where each thread computes one element of C. To do it, the thread reads a full row of A and a full column of B from **global memory**. Global memory is large but slow, and neighbouring threads read the same values over and over.
