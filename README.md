@@ -4,13 +4,13 @@ Hand-written CUDA matrix multiplication kernels, each one faster than the last, 
 
 ## Results
 
-FP32, 1024 × 1024 × 1024, average of 100 runs on an NVIDIA _\<GPU\>_.
+FP32, 1024 × 1024 × 1024, average of 100 runs on an NVIDIA T4 (Google Colab).
 
 | Kernel                | GFLOPS | % of cuBLAS |
 | --------------------- | ------ | ----------- |
-| Naive                 | _TBD_  | _TBD_       |
-| Tiled (shared memory) | _TBD_  | _TBD_       |
-| cuBLAS                | _TBD_  | 100%        |
+| Naive                 | 397    | 7.1%        |
+| Tiled (shared memory) | 787    | 14.1%       |
+| cuBLAS                | 5,570  | 100%        |
 
 Performance is measured in GFLOPS (billions of floating-point operations per second). A matrix multiplication of an M × K matrix by a K × N matrix takes `2 · M · N · K` operations: one multiply and one add per step of each dot product.
 
